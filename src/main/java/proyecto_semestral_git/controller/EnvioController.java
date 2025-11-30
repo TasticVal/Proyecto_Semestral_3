@@ -1,74 +1,89 @@
 package proyecto_semestral_git.controller;
 
-import proyecto_semestral_git.model.EnvioModel; 
+import proyecto_semestral_git.model.EnvioModel;
+import proyecto_semestral_git.repository.EnvioRepository; // Importamos el repositorio de envíos
+
+import org.springframework.beans.factory.annotation.Autowired; // Inyección de dependencias
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Optional;
 
+// Eliminamos ConcurrentHashMap y AtomicInteger
 
 @RestController
-@RequestMapping("/envios") 
+@RequestMapping("/envios")
 public class EnvioController {
     
-    private final ConcurrentMap<Integer, EnvioModel> repo = new ConcurrentHashMap<>();
-    private final AtomicInteger idGenerator = new AtomicInteger(1);
+    // Inyectamos el repositorio que conecta con MySQL
+    @Autowired
+    private EnvioRepository envioRepository;
 
     @GetMapping
     public List<EnvioModel> listar() {
-        return new ArrayList<>(repo.values());
+        // Obtenemos todos los métodos de envío de la base de datos
+        return envioRepository.findAll();
     }
 
     @GetMapping("/obetener/{id}")
     public ResponseEntity<EnvioModel> obtener(@PathVariable int id) {
-        EnvioModel e = repo.get(id);
-        if (e == null) {
+        // Buscamos por ID en la BD
+        Optional<EnvioModel> e = envioRepository.findById(id);
+        
+        if (e.isPresent()) {
+            return ResponseEntity.ok(e.get());
+        } else {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(e);
     }
 
     @PostMapping("/crear")
     public ResponseEntity<EnvioModel> crear(@RequestBody EnvioModel envio) {
-        int id = idGenerator.getAndIncrement();
-        envio.setId(id);
-        repo.put(id, envio);
+        // Guardamos en la base de datos.
+        // El ID se genera automáticamente gracias a @GeneratedValue en el modelo.
+        EnvioModel envioGuardado = envioRepository.save(envio);
         
         HttpHeaders headers = new HttpHeaders();
-        headers.setLocation(URI.create("/envios/" + id)); 
+        headers.setLocation(URI.create("/envios/" + envioGuardado.getId()));
         
-        return new ResponseEntity<>(envio, headers, HttpStatus.CREATED);
+        return new ResponseEntity<>(envioGuardado, headers, HttpStatus.CREATED);
     }
 
     @PutMapping("/actualizar/{id}")
     public ResponseEntity<EnvioModel> actualizar(@PathVariable int id, @RequestBody EnvioModel envio) {
-        EnvioModel existente = repo.get(id);
-        if (existente == null) {
+        // Primero verificamos si existe en la BD
+        Optional<EnvioModel> existenteOpt = envioRepository.findById(id);
+        
+        if (existenteOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
+        
+        EnvioModel existente = existenteOpt.get();
 
-       
+        // Actualizamos los campos
         existente.setNombre(envio.getNombre());
         existente.setPrecio(envio.getPrecio());
-        existente.setTiempoEstimado(envio.getTiempoEstimado()); 
+        existente.setTiempoEstimado(envio.getTiempoEstimado());
         
-        repo.put(id, existente);
-        return ResponseEntity.ok(existente);
+        // Guardamos los cambios
+        EnvioModel actualizado = envioRepository.save(existente);
+        
+        return ResponseEntity.ok(actualizado);
     }
     
     @DeleteMapping("/eliminar/{id}")
     public ResponseEntity<Void> eliminar(@PathVariable int id) {
-        EnvioModel removed = repo.remove(id);
-        if (removed == null) {
+        // Verificamos si existe antes de borrar
+        if (!envioRepository.existsById(id)) {
             return ResponseEntity.notFound().build();
         }
+        
+        // Borramos de la BD
+        envioRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 }

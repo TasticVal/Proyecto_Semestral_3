@@ -1,36 +1,30 @@
 package proyecto_semestral_git.controller;
 
 import proyecto_semestral_git.model.UsuarioModel;
+import proyecto_semestral_git.repository.UsuarioRepository; // Importamos el repositorio
 import proyecto_semestral_git.dto.AuthRequestDTO;
 import proyecto_semestral_git.dto.AuthResponseDTO;
 
+import org.springframework.beans.factory.annotation.Autowired; // Inyección de dependencias
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
+
+// Eliminamos ConcurrentHashMap y AtomicInteger
 
 @RestController
 @RequestMapping("/usuarios")
 public class UsuarioController {
     
-    // Repositorio en memoria para usuarios.
-    // La clave será el ID (Integer), pero también necesitaremos buscar por username (String)
-    private final ConcurrentMap<Integer, UsuarioModel> repoById = new ConcurrentHashMap<>();
-    
-    // Un "índice" simple para buscar por nombre de usuario y guardar contraseñas
-    // En una app real, la base de datos haría esto.
-    private final ConcurrentMap<String, String> repoPasswords = new ConcurrentHashMap<>();
-    
-    private final AtomicInteger idGenerator = new AtomicInteger(1);
+    // Inyectamos el repositorio que conecta con la base de datos MySQL
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     /**
      * Endpoint para registrar un nuevo usuario.
@@ -38,32 +32,32 @@ public class UsuarioController {
     @PostMapping("/registrar")
     public ResponseEntity<UsuarioModel> registrar(@RequestBody UsuarioModel usuario) {
         
-        // 1. Verificar si el nombre de usuario ya existe
-        if (repoPasswords.containsKey(usuario.getUsername())) {
+        // 1. Verificar si el nombre de usuario ya existe en la Base de Datos
+        // Usamos el método mágico findByUsername que creamos en el repositorio
+        Optional<UsuarioModel> existente = usuarioRepository.findByUsername(usuario.getUsername());
+        
+        if (existente.isPresent()) {
             // Retorna "Conflict" (409) si el usuario ya existe
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         }
         
-        int id = idGenerator.getAndIncrement();
-        usuario.setId(id);
-        
         // 2. "Encriptar" la contraseña (simulación)
-        // En una app real, usarías Spring Security y Bcrypt
-        // NUNCA guardes contraseñas en texto plano.
+        // En una app real, usarías Spring Security y Bcrypt aquí.
         String passwordSimuladaHash = "hashed_pass_" + usuario.getPassword();
+        usuario.setPassword(passwordSimuladaHash); // Guardamos la contraseña ya transformada
         
-        // 3. Guardar el usuario
-        // Guardamos la contraseña "hasheada" en nuestro repo de contraseñas
-        repoPasswords.put(usuario.getUsername(), passwordSimuladaHash);
-        
-        // Guardamos el modelo de usuario (sin la contraseña) en el repo principal
-        usuario.setPassword(null); // Limpiamos la contraseña del modelo
-        repoById.put(id, usuario);
+        // 3. Guardar el usuario en la Base de Datos
+        // El ID se genera automáticamente gracias a @GeneratedValue en el modelo
+        UsuarioModel usuarioGuardado = usuarioRepository.save(usuario);
+
+        // Limpiamos la contraseña antes de devolver el objeto al cliente por seguridad
+        // (Aunque @JsonProperty(access = WRITE_ONLY) ya ayuda con esto en el JSON)
+        usuarioGuardado.setPassword(null);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setLocation(URI.create("/usuarios/obtener/" + id));
+        headers.setLocation(URI.create("/usuarios/obtener/" + usuarioGuardado.getId()));
         
-        return new ResponseEntity<>(usuario, headers, HttpStatus.CREATED);
+        return new ResponseEntity<>(usuarioGuardado, headers, HttpStatus.CREATED);
     }
 
     /**
@@ -72,52 +66,51 @@ public class UsuarioController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDTO> login(@RequestBody AuthRequestDTO authRequest) {
         
-        // 1. Buscar si el usuario existe
-        String passwordSimuladaHash = repoPasswords.get(authRequest.getUsername());
-        if (passwordSimuladaHash == null) {
-            // No encontrado (404) o No autorizado (401)
+        // 1. Buscar si el usuario existe en la Base de Datos
+        Optional<UsuarioModel> usuarioOpt = usuarioRepository.findByUsername(authRequest.getUsername());
+        
+        if (usuarioOpt.isEmpty()) {
+            // Usuario no encontrado -> 401 Unauthorized
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
-        // 2. Verificar la contraseña (simulación)
+        UsuarioModel usuario = usuarioOpt.get();
+        
+        // 2. Verificar la contraseña
+        // Simulamos el mismo hash que usamos al registrar
         String passwordIngresadaSimuladaHash = "hashed_pass_" + authRequest.getPassword();
         
-        if (!passwordSimuladaHash.equals(passwordIngresadaSimuladaHash)) {
-            // Contraseña incorrecta
+        // Comparamos la contraseña de la BD con la que nos enviaron
+        if (!usuario.getPassword().equals(passwordIngresadaSimuladaHash)) {
+            // Contraseña incorrecta -> 401 Unauthorized
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
-        // 3. El login es exitoso. Buscar el UsuarioModel completo
-        Optional<UsuarioModel> usuarioOpt = repoById.values().stream()
-                .filter(u -> u.getUsername().equals(authRequest.getUsername()))
-                .findFirst();
-
-        if (usuarioOpt.isEmpty()) {
-            // Esto sería un error interno, pero por si acaso
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-
-        // 4. Generar un "token" simulado
+        // 3. El login es exitoso.
+        // Generar un "token" simulado
         String token = UUID.randomUUID().toString();
         
-        // 5. Devolver la respuesta exitosa
-        AuthResponseDTO response = new AuthResponseDTO(token, usuarioOpt.get());
+        // Limpiamos la contraseña antes de enviarla en la respuesta
+        usuario.setPassword(null);
+        
+        // 4. Devolver la respuesta exitosa con el token y los datos del usuario
+        AuthResponseDTO response = new AuthResponseDTO(token, usuario);
         return ResponseEntity.ok(response);
     }
     
     @GetMapping("/obtener/{id}")
     public ResponseEntity<UsuarioModel> obtener(@PathVariable int id) {
-        UsuarioModel u = repoById.get(id);
-        if (u == null) {
+        Optional<UsuarioModel> u = usuarioRepository.findById(id);
+        
+        if (u.isPresent()) {
+            return ResponseEntity.ok(u.get());
+        } else {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(u);
     }
 
     @GetMapping
     public List<UsuarioModel> listar() {
-        return new ArrayList<>(repoById.values());
+        return usuarioRepository.findAll();
     }
-
-    // Faltarían PUT (actualizar perfil) y DELETE, pero esto cubre el login.
 }
