@@ -2,9 +2,10 @@ package proyecto_semestral_git.controller;
 
 import proyecto_semestral_git.model.PedidoModel;
 import proyecto_semestral_git.model.ProductoModel;
-import proyecto_semestral_git.repository.PedidoRepository; // Importamos el nuevo repositorio
+import proyecto_semestral_git.repository.PedidoRepository;
+import proyecto_semestral_git.repository.ProductoRepository; // Necesario para buscar y actualizar el stock del producto
 
-import org.springframework.beans.factory.annotation.Autowired; // Inyección de dependencias
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,16 +14,19 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
+import java.util.ArrayList;
 
-// Eliminamos ConcurrentHashMap y AtomicInteger
-
+@CrossOrigin(origins = "*") // Permite que el Frontend HTML se conecte sin bloqueos
 @RestController
 @RequestMapping("/pedidos")
 public class PedidoController {
 
-    // Inyectamos el repositorio que conecta con la base de datos
     @Autowired
     private PedidoRepository pedidoRepository;
+
+    // Inyectamos el repositorio de productos para poder manipular el stock
+    @Autowired
+    private ProductoRepository productoRepository;
 
     @GetMapping
     public List<PedidoModel> listar() {
@@ -31,7 +35,6 @@ public class PedidoController {
 
     @GetMapping("/obetener/{id}")
     public ResponseEntity<PedidoModel> obtener(@PathVariable int id) {
-        // findById ahora devuelve un Optional
         Optional<PedidoModel> p = pedidoRepository.findById(id);
         
         if (p.isPresent()) {
@@ -41,23 +44,44 @@ public class PedidoController {
         }
     }
 
+    /**
+     * Crear Pedido con VALIDACIÓN DE STOCK.
+     * 1. Verifica si el producto existe.
+     * 2. Verifica si hay stock disponible.
+     * 3. Descuenta el stock.
+     * 4. Guarda el pedido.
+     */
     @PostMapping("/crear")
-    public ResponseEntity<PedidoModel> crear(@RequestBody PedidoModel pedido) {
-        // --- Lógica de Negocio ---
-        // Calculamos el total antes de guardar
+    public ResponseEntity<?> crear(@RequestBody PedidoModel pedido) {
         int total = 0;
-        
-        // Importante: Al recibir el pedido, los productos solo traerán su ID.
-        // JPA se encargará de vincularlos si existen en la BD.
+        List<ProductoModel> productosProcesados = new ArrayList<>();
+
         if (pedido.getProductos() != null) {
-            for (ProductoModel producto : pedido.getProductos()) {
-                // Nota: En un entorno real, deberías buscar el precio actual del producto en la BD
-                // para evitar que el cliente envíe un precio falso.
-                // Por simplicidad, asumimos que el precio viene en el objeto o lo sumamos así.
-                total += producto.getPrecio();
+            for (ProductoModel pInput : pedido.getProductos()) {
+                Optional<ProductoModel> prodOpt = productoRepository.findById(pInput.getId());
+                
+                if (prodOpt.isEmpty()) {
+                    return ResponseEntity.badRequest().body("Error: Producto no encontrado con ID: " + pInput.getId());
+                }
+
+                ProductoModel prodReal = prodOpt.get();
+
+                if (prodReal.getStock() < 1) {
+                    return ResponseEntity.badRequest().body("Stock insuficiente para el producto: " + prodReal.getNombre());
+                }
+
+                prodReal.setStock(prodReal.getStock() - 1);
+                
+                productoRepository.save(prodReal);
+
+                total += prodReal.getPrecio();
+                
+                productosProcesados.add(prodReal);
             }
         }
         
+        pedido.setProductos(productosProcesados);
+
         if (pedido.getMetodoEnvio() != null) {
             total += pedido.getMetodoEnvio().getPrecio();
         }
@@ -67,10 +91,7 @@ public class PedidoController {
         if (pedido.getEstado() == null || pedido.getEstado().isEmpty()) {
              pedido.setEstado("PENDIENTE");
         }
-        // -------------------------
 
-        // Guardamos en la base de datos.
-        // JPA generará el ID y guardará las relaciones en 'pedido_productos'.
         PedidoModel pedidoGuardado = pedidoRepository.save(pedido);
         
         HttpHeaders headers = new HttpHeaders();
@@ -81,7 +102,6 @@ public class PedidoController {
 
     @PutMapping("/actualizar-estado/{id}")
     public ResponseEntity<PedidoModel> actualizarEstado(@PathVariable int id, @RequestBody String nuevoEstado) {
-        // Buscamos en la BD
         Optional<PedidoModel> existenteOpt = pedidoRepository.findById(id);
         
         if (existenteOpt.isEmpty()) {
@@ -90,8 +110,9 @@ public class PedidoController {
         
         PedidoModel existente = existenteOpt.get();
         
-        // Actualizamos y guardamos
-        existente.setEstado(nuevoEstado);
+        String estadoLimpio = nuevoEstado.replace("\"", "");
+        existente.setEstado(estadoLimpio);
+        
         PedidoModel actualizado = pedidoRepository.save(existente);
         
         return ResponseEntity.ok(actualizado);

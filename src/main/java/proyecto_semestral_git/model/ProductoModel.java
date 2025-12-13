@@ -31,4 +31,5 @@ public class ProductoModel implements Serializable {
     private String nombre;
     private int precio;
     private String descripcion;
+    private int stock;
 }
