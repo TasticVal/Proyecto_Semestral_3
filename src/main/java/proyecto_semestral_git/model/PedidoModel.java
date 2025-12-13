@@ -2,6 +2,7 @@ package proyecto_semestral_git.model;
 
 import java.io.Serializable;
 import java.util.List;
+import java.time.LocalDateTime; 
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
@@ -9,7 +10,6 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 
-// IMPORTACIONES JPA
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -25,8 +25,8 @@ import jakarta.persistence.JoinColumn;
 @AllArgsConstructor
 @Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Entity // Convierte la clase en tabla
-@Table(name = "pedidos") // Nombre de la tabla en la BD
+@Entity 
+@Table(name = "pedidos") 
 public class PedidoModel implements Serializable {
     private static final long serialVersionUID = 1L;
 
@@ -37,9 +37,6 @@ public class PedidoModel implements Serializable {
     private String nombreCliente;
     private String direccionCliente;
 
-    // RELACIÓN: Un pedido tiene MUCHOS productos.
-    // JPA creará automáticamente una tabla intermedia llamada 'pedido_productos'
-    // para relacionar los IDs de los pedidos con los IDs de los productos.
     @ManyToMany
     @JoinTable(
         name = "pedido_productos", 
@@ -48,12 +45,10 @@ public class PedidoModel implements Serializable {
     )
     private List<ProductoModel> productos;
     
-    // RELACIÓN: Un pedido tiene UN método de envío.
-    // Se creará una columna 'envio_id' en la tabla 'pedidos'.
     @ManyToOne
     @JoinColumn(name = "envio_id")
     private EnvioModel metodoEnvio;
-
     private String estado;
     private int totalCalculado;
+    private LocalDateTime fechaDespacho;
 }

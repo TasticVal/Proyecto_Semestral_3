@@ -3,7 +3,7 @@ package proyecto_semestral_git.controller;
 import proyecto_semestral_git.model.PedidoModel;
 import proyecto_semestral_git.model.ProductoModel;
 import proyecto_semestral_git.repository.PedidoRepository;
-import proyecto_semestral_git.repository.ProductoRepository; // Necesario para buscar y actualizar el stock del producto
+import proyecto_semestral_git.repository.ProductoRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -15,6 +15,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 import java.util.ArrayList;
+import java.time.LocalDateTime; // Necesario para registrar la fecha de despacho
 
 @CrossOrigin(origins = "*") // Permite que el Frontend HTML se conecte sin bloqueos
 @RestController
@@ -110,8 +111,21 @@ public class PedidoController {
         
         PedidoModel existente = existenteOpt.get();
         
-        String estadoLimpio = nuevoEstado.replace("\"", "");
+        String estadoLimpio = nuevoEstado.replace("\"", "").toUpperCase(); 
         existente.setEstado(estadoLimpio);
+        
+        // --- LOGICA DE DESPACHO (RF4) ---
+        if ("DESPACHADO".equals(estadoLimpio)) {
+            existente.setFechaDespacho(LocalDateTime.now());
+            
+            // Simulación de Notificación (Log en consola)
+            System.out.println("=================================================");
+            System.out.println(" NOTIFICACIÓN DE ENVÍO AUTOMÁTICA");
+            System.out.println(" Cliente: " + existente.getNombreCliente());
+            System.out.println(" Estado: TU PEDIDO HA SIDO DESPACHADO");
+            System.out.println(" Fecha: " + existente.getFechaDespacho());
+            System.out.println("=================================================");
+        }
         
         PedidoModel actualizado = pedidoRepository.save(existente);
         
