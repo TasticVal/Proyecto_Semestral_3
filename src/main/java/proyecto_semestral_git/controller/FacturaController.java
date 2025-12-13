@@ -1,11 +1,11 @@
 package proyecto_semestral_git.controller;
 
+
 import proyecto_semestral_git.model.FacturaModel;
 import proyecto_semestral_git.model.PedidoModel;
-import proyecto_semestral_git.repository.FacturaRepository; // Importamos el repositorio de facturas
-// (Opcional) Si quieres actualizar el estado del pedido, necesitarías importar PedidoRepository también
+import proyecto_semestral_git.repository.FacturaRepository;
 
-import org.springframework.beans.factory.annotation.Autowired; // Inyección de dependencias
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,54 +17,42 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// Eliminamos ConcurrentHashMap
-
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/facturas")
 public class FacturaController {
 
-    // Inyectamos el repositorio de Facturas
     @Autowired
     private FacturaRepository facturaRepository;
     
-    // Mantenemos este generador solo para crear el STRING bonito "F-0001", "F-0002"
-    // (El ID numérico interno lo manejará la base de datos)
     private final AtomicInteger numeroFacturaGenerator = new AtomicInteger(1);
-
 
     @PostMapping("/generar")
     public ResponseEntity<FacturaModel> generarFactura(@RequestBody PedidoModel pedido) {
         
-        // Validación simple
         if (pedido == null || pedido.getId() == 0) {
-            // No podemos facturar un pedido que no existe o no es válido
             return ResponseEntity.badRequest().build();
         }
         
-        // Generamos el número de factura legible (ej: F-0001)
-        // Nota: En un sistema real, esto también podría sacarse de una secuencia de BD.
         String numeroFactura = "F-" + String.format("%04d", numeroFacturaGenerator.getAndIncrement());
 
-        // Construimos el objeto Factura (Snapshot del pedido)
+        int total = pedido.getTotalCalculado();
+        int neto = (int) Math.round(total / 1.19);
+        int iva = total - neto;
+
         FacturaModel factura = FacturaModel.builder()
-                // .id(idFactura) -> YA NO LO ASIGNAMOS, MySQL lo generará
                 .numeroFactura(numeroFactura)
                 .fechaEmision(LocalDateTime.now())
                 .pedidoId(pedido.getId()) 
                 .nombreCliente(pedido.getNombreCliente())
                 .direccionCliente(pedido.getDireccionCliente())
-                
-                // NOTA IMPORTANTE:
-                // Como marcamos 'productos' y 'metodoEnvio' como @Transient en el modelo,
-                // estos datos viajarán en el JSON de respuesta al cliente,
-                // PERO NO se guardarán en la tabla 'facturas' de la BD.
-                // La BD solo guardará 'totalPagado' y 'pedidoId'.
                 .productos(pedido.getProductos()) 
-                .metodoEnvio(pedido.getMetodoEnvio()) 
-                .totalPagado(pedido.getTotalCalculado()) 
+                .metodoEnvio(pedido.getMetodoEnvio())             
+                .montoNeto(neto)
+                .montoIva(iva)
+                .totalPagado(total) 
                 .build();
 
-        // Guardamos en MySQL
         FacturaModel facturaGuardada = facturaRepository.save(factura);
         
         HttpHeaders headers = new HttpHeaders();

@@ -10,21 +10,15 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 
-// IMPORTACIONES JPA
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
+import jakarta.persistence.*;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Entity // Convierte en tabla
-@Table(name = "facturas") // Nombre de la tabla
+@Entity
+@Table(name = "facturas")
 public class FacturaModel implements Serializable {
     private static final long serialVersionUID = 1L;
 
@@ -40,15 +34,14 @@ public class FacturaModel implements Serializable {
     private String nombreCliente;
     private String direccionCliente;
 
-    // @Transient: Indica que esta lista NO se guardará en una columna de la base de datos.
-    // Esto evita errores complejos de mapeo, ya que guardar un historial exacto de productos
-    // requiere tablas adicionales de "DetalleFactura".
     @Transient
     private List<ProductoModel> productos;
     
-    // @Transient: Lo mismo para el envío, no se guarda como columna en la tabla facturas.
     @Transient
     private EnvioModel metodoEnvio;
 
-    private int totalPagado;
+    
+    private int montoNeto; 
+    private int montoIva;  
+    private int totalPagado; 
 }
