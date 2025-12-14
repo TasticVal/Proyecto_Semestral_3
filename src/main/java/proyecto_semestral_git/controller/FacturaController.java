@@ -4,6 +4,7 @@ package proyecto_semestral_git.controller;
 import proyecto_semestral_git.model.FacturaModel;
 import proyecto_semestral_git.model.PedidoModel;
 import proyecto_semestral_git.repository.FacturaRepository;
+import proyecto_semestral_git.repository.PedidoRepository; // IMPORTANTE: Necesitamos buscar el pedido
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -17,13 +18,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "*") 
 @RestController
 @RequestMapping("/facturas")
 public class FacturaController {
 
     @Autowired
     private FacturaRepository facturaRepository;
+
+    @Autowired
+    private PedidoRepository pedidoRepository; // Inyectamos el repo de pedidos
     
     private final AtomicInteger numeroFacturaGenerator = new AtomicInteger(1);
 
@@ -34,6 +38,11 @@ public class FacturaController {
             return ResponseEntity.badRequest().build();
         }
         
+        // Verificamos si ya existe una factura para este pedido para no duplicar
+        // (Esto es opcional pero recomendado)
+        // List<FacturaModel> facturas = facturaRepository.findAll();
+        // ... lógica de búsqueda ...
+
         String numeroFactura = "F-" + String.format("%04d", numeroFacturaGenerator.getAndIncrement());
 
         int total = pedido.getTotalCalculado();
@@ -46,14 +55,21 @@ public class FacturaController {
                 .pedidoId(pedido.getId()) 
                 .nombreCliente(pedido.getNombreCliente())
                 .direccionCliente(pedido.getDireccionCliente())
+                
+                // Estos datos se usan en la respuesta inmediata (JSON), pero NO se guardan en la tabla facturas
                 .productos(pedido.getProductos()) 
-                .metodoEnvio(pedido.getMetodoEnvio())             
+                .metodoEnvio(pedido.getMetodoEnvio()) 
+                
                 .montoNeto(neto)
                 .montoIva(iva)
                 .totalPagado(total) 
                 .build();
 
         FacturaModel facturaGuardada = facturaRepository.save(factura);
+        
+        // Al devolver, nos aseguramos que los productos sigan ahí (JPA a veces limpia los transient al guardar)
+        facturaGuardada.setProductos(pedido.getProductos());
+        facturaGuardada.setMetodoEnvio(pedido.getMetodoEnvio());
         
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(URI.create("/facturas/obtener/" + facturaGuardada.getId()));
@@ -66,12 +82,25 @@ public class FacturaController {
         return facturaRepository.findAll();
     }
 
+    // --- CORRECCIÓN CLAVE AQUÍ ---
     @GetMapping("/obtener/{id}")
     public ResponseEntity<FacturaModel> obtener(@PathVariable int id) {
-        Optional<FacturaModel> f = facturaRepository.findById(id);
+        Optional<FacturaModel> fOpt = facturaRepository.findById(id);
         
-        if (f.isPresent()) {
-            return ResponseEntity.ok(f.get());
+        if (fOpt.isPresent()) {
+            FacturaModel factura = fOpt.get();
+            
+            // TRUCO: Como los productos son @Transient (no están en la tabla factura),
+            // buscamos el Pedido original y los copiamos de vuelta para mostrarlos.
+            Optional<PedidoModel> pedidoOpt = pedidoRepository.findById(factura.getPedidoId());
+            
+            if (pedidoOpt.isPresent()) {
+                PedidoModel pedido = pedidoOpt.get();
+                factura.setProductos(pedido.getProductos());
+                factura.setMetodoEnvio(pedido.getMetodoEnvio());
+            }
+            
+            return ResponseEntity.ok(factura);
         } else {
             return ResponseEntity.notFound().build();
         }

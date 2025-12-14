@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 // Eliminamos ConcurrentHashMap y AtomicInteger
-
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/envios")
 public class EnvioController {

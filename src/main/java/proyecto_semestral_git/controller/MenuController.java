@@ -1,5 +1,6 @@
 package proyecto_semestral_git.controller;
 
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,6 +12,7 @@ import java.util.Map;
  * Controlador para el "Menú Principal" o "Endpoint Raíz" de la API.
  * Proporciona una guía simple de los endpoints disponibles.
  */
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/") // Se mapea a la raíz: http://localhost:8080/
 public class MenuController {
